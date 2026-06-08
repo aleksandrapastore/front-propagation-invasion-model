@@ -86,6 +86,17 @@ for ax, c, title in zip(axes, wave_speeds, titles):
             markeredgecolor='black',
             zorder=7,
             label='Stable node $(0,0)$' if c >= 2 else 'Stable spiral $(0,0)$')
+    
+    arrow_idx = 600 if c < 2 else len(U_traj) // 3
+    arrow_step = 80 if c < 2 else 120
+
+    ax.annotate(
+        '',
+        xy=(U_traj[arrow_idx + arrow_step], W_traj[arrow_idx + arrow_step]),
+        xytext=(U_traj[arrow_idx], W_traj[arrow_idx]),
+        arrowprops=dict(arrowstyle='->', color='black', lw=1.8),
+        zorder=6
+    )
 
     #Define axis limits
     ax.set_xlim(-0.6, 1.1)
@@ -108,8 +119,6 @@ for ax, c, title in zip(axes, wave_speeds, titles):
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
-#Add plot to the whole figure
-plt.suptitle('Phase-plane trajectories illustrating the Fisher-KPP minimum wave speed', fontsize=12)
 plt.tight_layout()
 plt.savefig('fisher_kpp_ode_heteroclinic.pdf', bbox_inches='tight', dpi=300)
 plt.show()
