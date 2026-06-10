@@ -42,7 +42,7 @@ ax.plot(np.zeros_like(W_int), np.zeros_like(W_int), W_int, color='black', lw=2.5
 ax.set_xlabel(r'$U$', fontsize=13, labelpad=10)
 ax.set_ylabel(r'$V$', fontsize=13, labelpad=10)
 ax.set_zlabel(r'$W$', fontsize=13, labelpad=10)
-ax.set_title(r'Critical manifold $\mathcal{M}_0=\{UV=0\}$', fontsize=14, pad=15)
+#ax.set_title(r'Critical manifold $\mathcal{M}_0=\{UV=0\}$', fontsize=14, pad=15)
 
 #Define axes limits
 ax.set_xlim(0, 1)
