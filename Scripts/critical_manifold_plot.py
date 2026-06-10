@@ -40,7 +40,7 @@ ax.text(0.03, 0.5, 0.06, r'$(0,V_\infty,0)$', fontsize=14, fontweight='bold')
 #Plot the intersection line between critical manifold branches (0,0,W)
 W_int = np.linspace(-0.3, 0.5, 100)
 ax.plot(np.zeros_like(W_int), np.zeros_like(W_int), W_int, color='black', lw=4, ls='--', zorder=8)
-ax.text(0.02, 0.02, 0.42, r'$\mathcal{L}$', fontsize=14)
+ax.text(0.02, 0.04, 0.42, r'$L$', fontsize=14)
 
 #Label the axes and the plot
 ax.set_xlabel(r'$U$', fontsize=13, labelpad=10)
