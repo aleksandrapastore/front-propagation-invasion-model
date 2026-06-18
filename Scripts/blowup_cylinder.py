@@ -5,6 +5,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
+plt.rcParams.update({
+    "mathtext.fontset": "cm",
+    "font.serif": "serif",
+})
 
 fig = plt.figure(figsize=(10, 8))
 ax = fig.add_subplot(111, projection="3d")
@@ -27,14 +31,14 @@ U_grid, W_grid = np.meshgrid(U_range, W_range)
 V_grid = np.zeros_like(U_grid)
 ax.plot_surface(
     U_grid, V_grid, W_grid,
-    alpha=0.25, color=blue, edgecolor=blue, linewidth=0.15
+    alpha=0.18, color=blue, edgecolor="none", linewidth=0.15, antialiased=True
 )
 # M_{0U}
 V_grid2, W_grid2 = np.meshgrid(V_range, W_range)
 U_grid2 = np.zeros_like(V_grid2)
 ax.plot_surface(
     U_grid2, V_grid2, W_grid2,
-    alpha=0.25, color=orange, edgecolor=orange, linewidth=0.15
+    alpha=0.18, color=orange, edgecolor="none", linewidth=0.15, antialiased=True
 )
 
 # Plot the intersection line L
@@ -62,11 +66,12 @@ Wc = radius * np.sin(Theta)
 
 ax.plot_surface(
     Uc, Vc, Wc,
-    alpha=0.28,
+    alpha=0.25,
     color=green,
-    edgecolor=green,
+    edgecolor="none",
     linewidth=0.15,
-    zorder=10
+    zorder=10,
+    antialiased=True
 )
 
 # Central axis of blown-up cylinder V_cyl

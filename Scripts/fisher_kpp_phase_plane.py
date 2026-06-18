@@ -4,6 +4,10 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
+plt.rcParams.update({
+    "mathtext.fontset": "cm",
+    "font.serif": "serif",
+})
 
 
 def fisher_kpp_ode(z, y, c):
