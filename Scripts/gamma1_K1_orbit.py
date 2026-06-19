@@ -153,6 +153,14 @@ ax.annotate(
     textcoords='offset points'
 )
 
+# Label the heteroclinic trajectory
+ax.annotate(
+    r'$\Gamma_1$',
+    (0.45, -0.30),
+    xytext=(8, -8),
+    textcoords='offset points'
+)
+
 # Choose axis limits
 ax.set_xlim(-0.02, 1.05)
 ax.set_ylim(-1.05, 0.08)
