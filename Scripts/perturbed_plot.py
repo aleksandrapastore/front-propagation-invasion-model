@@ -1,5 +1,5 @@
 ###
-# Phase-plane trajectories of the two-component travelling-wave ODE system.
+# Heteroclinic trajectory of the perturbed two-component travelling-wave system.
 ###
 import numpy as np
 from scipy.integrate import solve_ivp
