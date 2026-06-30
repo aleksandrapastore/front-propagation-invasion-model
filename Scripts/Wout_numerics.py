@@ -91,7 +91,7 @@ def compute_Wout(eta, r2, Vinf, delta=1e-6, z_back=500):
 if __name__ == "__main__":
 
     # Take a small value of the radial coordinate.
-    r2 = 1e-3
+    r2 = 0
     Vinf = 0.3
     etas = [0.4, 0.3, 0.2, 0.1, 0.05, 0.025]
 
