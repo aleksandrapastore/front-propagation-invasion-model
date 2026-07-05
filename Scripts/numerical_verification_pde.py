@@ -6,6 +6,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.sparse import diags, identity
 from scipy.sparse.linalg import spsolve
+plt.rcParams.update({
+    "mathtext.fontset": "cm",
+    "font.serif": "serif",
+})
 
 
 def diffusion_matrix(v, dx):
@@ -54,7 +58,7 @@ def front_position(x, u, level=0.5):
     return x[i] + (level - u[i]) * (x[i + 1] - x[i]) / (u[i + 1] - u[i])
 
 
-def estimate_speed(times, positions, discard_fraction=0.5):
+def estimate_speed(times, positions, discard_fraction=0.7):
     '''
     Estimate the travelling-wave speed from the computed front position.
     x_f(t) = ct + k_0 log(t) + k_1
@@ -162,15 +166,15 @@ def simulate(gamma=50.0, Vinf=0.3, L=400.0, nx=2001, dt=0.02, T=120.0, save_time
     return x, u, v, np.array(times), np.array(positions), profiles
 
 
-def domain_and_time_for_gamma(gamma):
+def domain_and_time_for_gamma(gamma, dx=0.2):
     '''
     Choose the computational domain and final simulation time.
     '''
-    scale = np.log(gamma) / np.log(50.0)
-    L = 400.0 * scale
-    T = 120.0 * scale
+    scale = np.log(gamma) / np.log(50)
+    L = 500 * scale
+    T = 180 * scale
     # Keep approximately the same spatial mesh size
-    nx = int(2001 * scale)
+    nx = int(L / dx) + 1
     dt = 0.02
     return L, T, nx, dt
 
@@ -183,7 +187,7 @@ if __name__ == "__main__":
 
     gamma = 50.0
     L, T, nx, dt = domain_and_time_for_gamma(gamma)
-    x, u, v, times, positions, profiles = simulate(gamma=gamma, Vinf=Vinf, L=L, nx=nx, dt=dt, T=T, save_times=(0, 20, 40, 80, 120),)
+    x, u, v, times, positions, profiles = simulate(gamma=gamma, Vinf=Vinf, L=L, nx=nx, dt=dt, T=T, save_times=(0, 40, 80, 120, 180),)
 
     # Plot final u-profile
     plt.figure(figsize=(7, 4))
@@ -228,7 +232,7 @@ if __name__ == "__main__":
 
 
     # Step 2. Estimate the wave speed from the front position.
-    c_num, k0, k1 = estimate_speed(times, positions)
+    c_num, k0, k1 = estimate_speed(times, positions, discard_fraction=0.75)
 
     print("\nEstimated travelling-wave speed")
     print(f"gamma = {gamma}")
@@ -236,7 +240,7 @@ if __name__ == "__main__":
 
     # Step 3. Repeat the speed computation for different gamma values and compare with the asymptotic prediction.
     
-    gammas = [50, 100, 300, 1000]
+    gammas = [50, 100, 200, 500, 1000, 3000, 5000, 8000, 10000]
     results = []
 
     for gamma in gammas:
@@ -247,28 +251,41 @@ if __name__ == "__main__":
         x, u, v, times, positions, profiles = simulate(gamma=gamma, Vinf=Vinf, L=L, nx=nx, dt=dt, T=T,)
 
         # Estimate the travelling-wave speed
-        c_num, k0, k1 = estimate_speed(times, positions)
+        c_num, k0, k1 = estimate_speed(times, positions, discard_fraction=0.75)
         # Compute the fitted asymptotic coefficient
         A_fit = (2 - c_num) * np.log(gamma)**2
-        results.append((gamma, c_num, A_fit))
+
+        # Leading-order asymptotic predictions for the wave speed
+        c_th_pi2 = c_pi2(gamma)
+        c_th_pi2_4 = c_pi2_over_4(gamma)
+
+        # Absolute errors relative to the two asymptotic predictions
+        E_pi2 = abs(c_num - c_th_pi2)
+        E_pi2_4 = abs(c_num - c_th_pi2_4)
+
+        results.append((gamma, c_num, A_fit, c_th_pi2, c_th_pi2_4, E_pi2, E_pi2_4))
 
         print(f"c_num = {c_num:.6f}")
         print(f"A_fit = {A_fit:.6f}")
+        print(f"pi^2  = {np.pi**2:.4f}")
+        print(f"pi^2/4 = {np.pi**2/4:.4f}")
+        print(f"E_pi2 = {E_pi2:.6e}")
+        print(f"E_pi2_4 = {E_pi2_4:.6e}")
 
     # Convert the results to arrays for plotting
     results = np.array(results)
     gamma_vals = results[:, 0]
     c_vals = results[:, 1]
     A_vals = results[:, 2]
-
-    # Predictions for comparison
-    c_vals_pi2 = c_pi2(gamma_vals)
-    c_vals_pi2_4 = c_pi2_over_4(gamma_vals)
+    c_vals_pi2 = results[:, 3]
+    c_vals_pi2_4 = results[:, 4]
+    errors_pi2 = results[:, 5]
+    errors_pi2_4 = results[:, 6]
 
     # Plot numerical speed against both asymptotic predictions
     plt.figure(figsize=(7, 4))
 
-    plt.plot(gamma_vals, c_vals, "o-", label=r"$c_{\mathrm{num}}$")
+    plt.plot(gamma_vals, c_vals, "o--", label=r"$c_{\mathrm{num}}$")
     plt.plot(gamma_vals, c_vals_pi2, "s--", label=r"$2-\pi^2/(\log\gamma)^2$",)
     plt.plot(gamma_vals, c_vals_pi2_4, "d--", label=r"$2-\pi^2/[4(\log\gamma)^2]$",)
 
@@ -282,18 +299,16 @@ if __name__ == "__main__":
     plt.savefig("pde_speed_comparison.pdf", dpi=300, bbox_inches="tight")
     plt.show()
 
-    # Compare fitted asymptotic coefficients
+    # Log-log error plot
+    eps_vals = 1 / gamma_vals
     plt.figure(figsize=(7, 4))
-
-    plt.plot(gamma_vals, A_vals, "o-", label=r"$A_{\mathrm{fit}}$")
-    plt.axhline(np.pi**2, linestyle="--", label=r"$\pi^2$")
-    plt.axhline(np.pi**2 / 4.0, linestyle=":", label=r"$\pi^2/4$")
-
-    plt.xscale("log")
-    plt.xlabel(r"$\gamma$")
-    plt.ylabel(r"$A_{\mathrm{fit}}$")
+    plt.loglog(eps_vals, errors_pi2, "o--", label=r"$\left|c_{\mathrm{num}}-\left(2-\pi^2/(\log\gamma)^2\right)\right|$",)
+    plt.loglog(eps_vals, errors_pi2_4, "s--", label=r"$\left|c_{\mathrm{num}}-\left(2-\pi^2/[4(\log\gamma)^2]\right)\right|$",)
+    plt.xlabel(r"$\varepsilon=1/\gamma$")
+    plt.ylabel(r"absolute error")
+    plt.title(r"Asymptotic speed error")
     plt.legend()
-    plt.grid(alpha=0.3)
+    plt.grid(True, which="both", alpha=0.3)
     plt.tight_layout()
-    plt.savefig("pde_Afit_comparison.pdf", dpi=300, bbox_inches="tight")
+    plt.savefig("absolute_error_plot.pdf", dpi=300, bbox_inches="tight")
     plt.show()
