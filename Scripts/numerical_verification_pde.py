@@ -7,9 +7,23 @@ import matplotlib.pyplot as plt
 from scipy.sparse import diags, identity
 from scipy.sparse.linalg import spsolve
 plt.rcParams.update({
+    "font.family": "serif",
     "mathtext.fontset": "cm",
-    "font.serif": "serif",
+    "font.size": 12,
+    "axes.labelsize": 13,
+    "xtick.labelsize": 11,
+    "ytick.labelsize": 11,
+    "legend.fontsize": 11,
+    "axes.linewidth": 0.8,
 })
+
+# Colour consistency definition
+# Numerical prediction = blue
+# pi^2 = orange
+# pi^2/4 = green
+COLOR_NUM = "C0"
+COLOR_PI2 = "C1"
+COLOR_PI24 = "C2"
 
 
 def diffusion_matrix(v, dx):
@@ -190,31 +204,28 @@ if __name__ == "__main__":
     x, u, v, times, positions, profiles = simulate(gamma=gamma, Vinf=Vinf, L=L, nx=nx, dt=dt, T=T, save_times=(0, 40, 80, 120, 180),)
 
     # Plot final u-profile
-    plt.figure(figsize=(7, 4))
-
+    plt.figure(figsize=(7, 4.5))
     for t, (u, v) in profiles.items():
-        plt.plot(x, u, label=rf"$t={t}$")
+        plt.plot(x, u, lw=2, label=rf"$t={t}$")
 
     plt.xlabel(r"$x$")
     plt.ylabel(r"$u(x,t)$")
-    plt.title(rf"u-profile, $\gamma={gamma}$, $V_\infty={Vinf}$")
-    plt.legend()
-    plt.grid(alpha=0.3)
+    #plt.title(rf"u-profile, $\gamma={gamma}$, $V_\infty={Vinf}$")
+    plt.legend(frameon=True, loc="best")
+    plt.grid(alpha=0.25)
     plt.tight_layout()
     plt.savefig("pde_u_profiles.pdf", dpi=300, bbox_inches="tight")
     plt.show()
 
     # Plot final v profile
-    plt.figure(figsize=(7, 4))
-
+    plt.figure(figsize=(7, 4.5))
     for t, (u, v) in profiles.items():
-        plt.plot(x, v, label=rf"$t={t}$")
-
+        plt.plot(x, v, lw=2, label=rf"$t={t}$")
     plt.xlabel(r"$x$")
     plt.ylabel(r"$v(x,t)$")
-    plt.title(rf"v-profile, $\gamma={gamma}$, $V_\infty={Vinf}$")
-    plt.legend()
-    plt.grid(alpha=0.3)
+    #plt.title(rf"v-profile, $\gamma={gamma}$, $V_\infty={Vinf}$")
+    plt.legend(frameon=True, loc="best")
+    plt.grid(alpha=0.25)
     plt.tight_layout()
     plt.savefig("pde_v_profiles.pdf", dpi=300, bbox_inches="tight")
     plt.show()
@@ -223,8 +234,8 @@ if __name__ == "__main__":
     plt.figure(figsize=(6, 4))
     plt.plot(times, positions, "k-")
     plt.xlabel(r"$t$")
-    plt.ylabel(r"$x_f(t)$ where $u=0.5$")
-    plt.title("Front position")
+    plt.ylabel(r"$x_f(t)$")
+    #plt.title("Front position")
     plt.grid(alpha=0.3)
     plt.tight_layout()
     plt.savefig("pde_front_position.pdf", dpi=300, bbox_inches="tight")
@@ -283,32 +294,43 @@ if __name__ == "__main__":
     errors_pi2_4 = results[:, 6]
 
     # Plot numerical speed against both asymptotic predictions
-    plt.figure(figsize=(7, 4))
-
-    plt.plot(gamma_vals, c_vals, "o--", label=r"$c_{\mathrm{num}}$")
-    plt.plot(gamma_vals, c_vals_pi2, "s--", label=r"$2-\pi^2/(\log\gamma)^2$",)
-    plt.plot(gamma_vals, c_vals_pi2_4, "d--", label=r"$2-\pi^2/[4(\log\gamma)^2]$",)
-
-    plt.axhline(2.0, color="k", lw=0.8, label=r"$2$")
+    plt.figure(figsize=(7, 4.5))
+    plt.plot(gamma_vals, c_vals, "o--", color=COLOR_NUM, lw=1.8, ms=6, label=r"$c_{\mathrm{num}}$")
+    plt.plot(gamma_vals, c_vals_pi2, "s--", color=COLOR_PI2, lw=1.8, ms=5.5, label=r"$2-\pi^2/(\ln\gamma)^2$",)
+    plt.plot(gamma_vals, c_vals_pi2_4, "d--", color=COLOR_PI24, lw=1.8, ms=5.5, label=r"$2-\pi^2/[4(\ln\gamma)^2]$",)
+    plt.axhline(2.0, color="k", lw=0.8, label=r"$c=2$")
     plt.xscale("log")
     plt.xlabel(r"$\gamma$")
     plt.ylabel(r"$c$")
-    plt.legend()
-    plt.grid(alpha=0.3)
+    plt.legend(frameon=True)
+    plt.grid(alpha=0.25)
     plt.tight_layout()
     plt.savefig("pde_speed_comparison.pdf", dpi=300, bbox_inches="tight")
     plt.show()
 
+    # Plot fitted leading-order coefficient A_{num}
+    plt.figure(figsize=(7, 4.5))
+    plt.plot(1 / np.log(gamma_vals), A_vals, "o-", color=COLOR_NUM, lw=1.8, ms=6, label=r"$A_{\mathrm{num}}$")
+    plt.axhline(np.pi**2, color=COLOR_PI2, lw=1.8, ls="--", label=r"$\pi^2$")
+    plt.axhline(np.pi**2/4, color=COLOR_PI24, lw=1.8, ls="--", label=r"$\pi^2/4$")
+    plt.xlabel(r"$1/\ln\gamma$")
+    plt.ylabel(r"$A_{\mathrm{num}}$")
+    plt.legend(frameon=True)
+    plt.grid(alpha=0.25)
+    plt.tight_layout()
+    plt.savefig("pde_Anum.pdf", dpi=300, bbox_inches="tight")
+    plt.show()
+
     # Log-log error plot
     eps_vals = 1 / gamma_vals
-    plt.figure(figsize=(7, 4))
-    plt.loglog(eps_vals, errors_pi2, "o--", label=r"$\left|c_{\mathrm{num}}-\left(2-\pi^2/(\log\gamma)^2\right)\right|$",)
-    plt.loglog(eps_vals, errors_pi2_4, "s--", label=r"$\left|c_{\mathrm{num}}-\left(2-\pi^2/[4(\log\gamma)^2]\right)\right|$",)
+    plt.figure(figsize=(7, 4.5))
+    plt.loglog(eps_vals, errors_pi2, "o--", color=COLOR_PI2, lw=1.8, ms=6, label=r"$E_{\pi^2}$",)
+    plt.loglog(eps_vals, errors_pi2_4, "s--", color=COLOR_PI24, lw=1.8, ms=5.5, label=r"$E_{\pi^2/4}$")
     plt.xlabel(r"$\varepsilon=1/\gamma$")
     plt.ylabel(r"absolute error")
-    plt.title(r"Asymptotic speed error")
+    #plt.title(r"Asymptotic speed error")
     plt.legend()
-    plt.grid(True, which="both", alpha=0.3)
+    plt.grid(True, which="both", alpha=0.25)
     plt.tight_layout()
     plt.savefig("absolute_error_plot.pdf", dpi=300, bbox_inches="tight")
     plt.show()
