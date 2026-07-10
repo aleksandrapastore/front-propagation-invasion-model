@@ -142,6 +142,7 @@ def simulate(gamma=50.0, Vinf=0.3, L=400.0, nx=2001, dt=0.02, T=120.0, save_time
     if save_times is not None:
         save_steps = {int(t / dt): t for t in save_times}
 
+    # Number of time steps
     nsteps = int(T/dt)
 
     for step in range(nsteps + 1):
