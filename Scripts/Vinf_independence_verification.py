@@ -1,5 +1,5 @@
 ###
-# Numerical verification of the two-component travelling-wave PDE with Heaviside initial conditions.
+# V_infty sweep for the two-component travelling-wave model.
 ###
 
 import numpy as np
@@ -106,7 +106,7 @@ def c_pi2_over_4(gamma):
     '''
     Leading-order prediction with coefficient 1/4.
     '''
-    return 2 - (np.pi**2 / 4.0) / np.log(gamma)**2
+    return 2 - (np.pi**2 / 4) / np.log(gamma)**2
 
 
 def simulate(gamma=50.0, Vinf=0.3, L=400.0, nx=2001, dt=0.02, T=120.0, save_times=None,):
@@ -122,7 +122,7 @@ def simulate(gamma=50.0, Vinf=0.3, L=400.0, nx=2001, dt=0.02, T=120.0, save_time
     n = len(x)
 
     # Heaviside profiles
-    x0 = -L/4
+    x0 = -0.4 * L
     u = np.where(x < x0, 1.0, 0.0)
     v = np.where(x < x0, 0.0, Vinf)
 
@@ -153,6 +153,9 @@ def simulate(gamma=50.0, Vinf=0.3, L=400.0, nx=2001, dt=0.02, T=120.0, save_time
         if step % 20 == 0:
             times.append(t)
             positions.append(front_position(x, u))
+
+        if step == nsteps:
+            break
 
         # Construct the diffusion matrix
         A = diffusion_matrix(v, dx)
@@ -196,8 +199,8 @@ if __name__ == "__main__":
     Vinf_values = [0.1, 0.3, 0.6]
     
     gammas = [50, 100, 200, 500, 1000, 3000, 5000, 8000, 10000]
-    results = []
 
+    all_rows = []
     # Running for different Vinf values
     plt.figure(figsize=(7,4.5))
     colors = [COLOR_VINF_01, COLOR_VINF_03, COLOR_VINF_06]
@@ -226,6 +229,7 @@ if __name__ == "__main__":
             E_pi2_4 = abs(c_num - c_th_pi2_4)
 
             results.append((gamma, c_num, A_num, c_th_pi2, c_th_pi2_4, E_pi2, E_pi2_4))
+            all_rows.append((gamma, Vinf, c_num, A_num, E_pi2, E_pi2_4))
 
             print(f"c_num = {c_num:.6f}")
             print(f"A_num = {A_num:.6f}")
@@ -235,15 +239,32 @@ if __name__ == "__main__":
             print(f"E_pi2_4 = {E_pi2_4:.6e}")
 
         results = np.array(results)
-        plt.plot(results[:,0], results[:,2], "o-", color=colour, lw=2.5, ms=6, label=rf"$V_\infty={Vinf}$",)
+        inverse_log_gamma = 1 / np.log(results[:, 0])
+
+        # Fit only the asymptotic tail: the linear-in-1/ln(gamma) form is
+        # valid up to O((ln gamma)^{-2}) corrections, which are large at small gamma.
+        tail = results[:, 0] >= 500
+        slope, intercept = np.polyfit(inverse_log_gamma[tail], results[tail, 2], 1)
+
+        print(
+            f"Vinf = {Vinf}: "
+            f"intercept = {intercept:.6f}, "
+            f"slope = {slope:.6f}"
+        )
+        plt.plot(inverse_log_gamma, results[:,2], "o-", color=colour, lw=2.5, ms=6, label=rf"$V_\infty={Vinf}$",)
 
     # Plot the numerical coefficient A_{num} for a range of Vinf.
     plt.axhline(np.pi**2, color="k", ls="--", lw=1.5, label=r"$\pi^2$",)
-    plt.xscale("log")
-    plt.xlabel(r"$\gamma$")
+    plt.axhline(np.pi**2 / 4, color="grey", ls=":", lw=1.5, label=r"$\pi^2/4$",)
+    plt.xlabel(r"$1/\ln\gamma$")
+    plt.xlim(left=0)
     plt.ylabel(r"$A_{\mathrm{num}}$")
     plt.grid(alpha=0.25)
     plt.legend(frameon=True)
     plt.tight_layout()
     plt.savefig("pde_Vinf_sweep.pdf", dpi=300, bbox_inches="tight")
+
+    np.savetxt("pde_Vinf_sweep.csv", np.array(all_rows), delimiter=",",
+               header="gamma,Vinf,c_num,A_num,E_pi2,E_pi2_over_4",
+               comments="", fmt="%.8g")
     plt.show()
