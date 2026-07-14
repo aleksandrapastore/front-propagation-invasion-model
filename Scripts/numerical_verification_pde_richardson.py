@@ -1,0 +1,370 @@
+###
+# Numerical verification of the two-component travelling-wave PDE.
+# The PDE is solved using the finite-difference IMEX method.
+# The first-order error in the time step is mitigated using the Richardson extrapolation.
+###
+
+import numpy as np
+import csv
+import matplotlib.pyplot as plt
+from scipy.sparse import diags, identity
+from scipy.sparse.linalg import spsolve
+plt.rcParams.update({
+    "font.family": "serif",
+    "mathtext.fontset": "cm",
+    "font.size": 12,
+    "axes.labelsize": 13,
+    "xtick.labelsize": 11,
+    "ytick.labelsize": 11,
+    "legend.fontsize": 11,
+    "axes.linewidth": 0.8,
+})
+
+# Colour consistency definition
+# Numerical prediction = blue
+# pi^2 = orange
+# pi^2/4 = green
+COLOR_NUM = "C0"
+COLOR_PI2 = "C1"
+COLOR_PI24 = "C2"
+
+
+def diffusion_matrix(v, dx):
+    '''
+    Finite difference matrix for the diffusion term of PDE.
+    '''
+    # Define the number of spatial grid points
+    n = len(v)
+    # Diffusion coefficient
+    D = 1 - v
+    D_half = 0.5 * (D[:-1] + D[1:])
+
+    # Three diagonals of the sparse matrix
+    lower = D_half / dx**2
+    upper = D_half / dx**2
+    main = np.zeros(n)
+
+    # Interior finite-difference stencil
+    main[1:-1] = -(D_half[:-1] + D_half[1:]) / dx**2
+
+    # Left Neumann boundary condition u_x = 0
+    main[0] = -2 * D_half[0] / dx**2
+    upper[0] = 2 * D_half[0] / dx**2
+    # Right Neumann boundary condition u_x = 0
+    main[-1] = -2 * D_half[-1] / dx**2
+    lower[-1] = 2 * D_half[-1] / dx**2
+
+    # Assemble the sparse tridiagonal matrix
+    return diags([lower, main, upper], [-1, 0, 1], format="csr")
+
+
+def front_position(x, u, level=0.5):
+    '''
+    Position of the travelling front.
+    '''
+    # Find grid intervals where u crosses chosen level u=0.5 from above.
+    idx = np.where((u[:-1] >= level) & (u[1:] < level))[0]
+
+    if len(idx) == 0:
+        return np.nan
+    
+    # Use the first crossing
+    i = idx[0]
+
+    # Linear interpolation between two neighbouring grid points
+    return x[i] + (level - u[i]) * (x[i + 1] - x[i]) / (u[i + 1] - u[i])
+
+
+def estimate_speed(times, positions, discard_fraction=0.7):
+    '''
+    Estimate the travelling-wave speed from the computed front position.
+    x_f(t) = ct + k_0 log(t) + k_1
+    '''
+
+    # Exclude any invalid front positions or t=0.
+    valid = np.isfinite(positions) & (times > 0)
+    t = times[valid]
+    x = positions[valid]
+
+    # Discard early-time transient
+    start = int(discard_fraction * len(t))
+    t = t[start:]
+    x = x[start:]
+
+    # Least-squares fitting matrix
+    A = np.column_stack([t, np.log(t), np.ones_like(t)])
+
+    # Find the best-fit coefficients
+    coeff, *_ = np.linalg.lstsq(A, x, rcond=None)
+
+    # Return fitted wave speed and corrections
+    # c, k0, k1
+    return coeff[0], coeff[1], coeff[2]
+
+def c_pi2(gamma):
+    '''
+    Leading-order prediction obtained in the dissertation.
+    '''
+    return 2 - np.pi**2 / np.log(gamma)**2
+
+
+def c_pi2_over_4(gamma):
+    '''
+    Leading-order prediction with coefficient 1/4.
+    '''
+    return 2 - (np.pi**2 / 4.0) / np.log(gamma)**2
+
+
+def simulate(gamma=50.0, Vinf=0.3, L=400.0, nx=2001, dt=0.02, T=120.0, save_times=None, record_every=20,):
+    '''
+    Solve the two-component invasion PDE using a Crank--Nicolson
+    discretisation for the diffusion term and an explicit treatment
+    of the reaction terms.
+    '''
+
+    # Spatial mesh grid
+    x = np.linspace(-L/2, L/2, nx)
+    dx = x[1] - x[0]
+    n = len(x)
+
+    # Heaviside profiles
+    x0 = -L/4
+    u = np.where(x < x0, 1.0, 0.0)
+    v = np.where(x < x0, 0.0, Vinf)
+
+    # Identity matrix for the implicit solve
+    I = identity(n, format="csr")
+
+    # Storage for the front position
+    times = []
+    positions = []
+
+    # Store selected solution profiles for plotting.
+    profiles = {}
+
+    if save_times is not None:
+        save_steps = {int(t / dt): t for t in save_times}
+
+    # Number of time steps
+    nsteps = int(T/dt)
+
+    for step in range(nsteps + 1):
+
+        t = step*dt
+
+        # Save solution profile at selected times.
+        if save_times is not None and step in save_steps:
+            profiles[save_steps[step]] = (u.copy(), v.copy())
+
+        # Record the front position every few time steps
+        if step % record_every == 0:
+            times.append(t)
+            positions.append(front_position(x, u))
+
+        if step == nsteps:
+            break
+
+        # Construct the diffusion matrix
+        A = diffusion_matrix(v, dx)
+
+        # Reaction term
+        reaction = u*(1-u-v)
+
+        # Crank-Nicolson update for diffusion
+        lhs = I - 0.5*dt*A
+        rhs = (I + 0.5*dt*A).dot(u) + dt*reaction
+
+        u_new = spsolve(lhs, rhs)
+        u_new = np.clip(u_new, 0.0, 1.2)
+
+        # Exact update for the resident population
+        v_new = v*np.exp(-dt*gamma*u_new)
+        v_new = np.clip(v_new, 0.0, Vinf)
+
+        u = u_new
+        v = v_new
+
+    return x, u, v, np.array(times), np.array(positions), profiles
+
+
+def domain_and_time_for_gamma(gamma, dx=0.2):
+    '''
+    Choose the computational domain and final simulation time.
+    '''
+    scale = np.log(gamma) / np.log(50)
+    L = 500 * scale
+    T = 180 * scale
+    # Keep approximately the same spatial mesh size
+    nx = int(L / dx) + 1
+    dt = 0.02
+    return L, T, nx, dt
+
+
+
+def estimate_speed_richardson(gamma, Vinf, L, nx, T, dt):
+    '''
+    Richardson extrapolation for the travelling-wave speed.
+    '''
+    # Keep the front sampling interval approximately equal to 0.4.
+    record_coarse = max(1, int(round(0.4 / dt)))
+    record_fine = max(1, int(round(0.4 / (dt / 2))))
+
+    # Simulate at dt
+    _, _, _, times1, positions1, _ = simulate(gamma=gamma, Vinf=Vinf, L=L, nx=nx, dt=dt, T=T, record_every=record_coarse,)
+    c1, _, _ = estimate_speed(times1, positions1, discard_fraction=0.75,)
+
+    # Simulate at dt/2
+    _, _, _, times2, positions2, _ = simulate(gamma=gamma, Vinf=Vinf, L=L, nx=nx, dt=dt/2, T=T, record_every=record_fine,)
+    c2, _, _ = estimate_speed(times2, positions2, discard_fraction=0.75,)
+    # First-order Richardson extrapolation
+    c_richardson = 2 * c2 - c1
+    print(
+        f"c(dt) = {c1:.8f}, "
+        f"c(dt/2) = {c2:.8f}, "
+        f"c_R = {c_richardson:.8f}"
+    )
+
+    return c1, c2, c_richardson
+
+
+if __name__ == "__main__":
+
+    Vinf = 0.3
+
+    # Step 1. Confirm travelling waves formation.
+
+    gamma = 50.0
+    L, T, nx, dt = domain_and_time_for_gamma(gamma)
+    x, u, v, times, positions, profiles = simulate(gamma=gamma, Vinf=Vinf, L=L, nx=nx, dt=dt, T=T, save_times=(0, 40, 80, 120, 180),)
+    # Plot final u-profile
+    plt.figure(figsize=(7, 4.5))
+    for t, (u, v) in profiles.items():
+        plt.plot(x, u, lw=2, label=rf"$t={t}$")
+
+    plt.xlabel(r"$x$")
+    plt.ylabel(r"$u(x,t)$")
+    #plt.title(rf"u-profile, $\gamma={gamma}$, $V_\infty={Vinf}$")
+    plt.legend(frameon=True, loc="best")
+    plt.grid(alpha=0.25)
+    plt.tight_layout()
+    plt.savefig("pde_u_profiles.pdf", dpi=300, bbox_inches="tight")
+    plt.show()
+
+    # Plot final v profile
+    plt.figure(figsize=(7, 4.5))
+    for t, (u, v) in profiles.items():
+        plt.plot(x, v, lw=2, label=rf"$t={t}$")
+    plt.xlabel(r"$x$")
+    plt.ylabel(r"$v(x,t)$")
+    #plt.title(rf"v-profile, $\gamma={gamma}$, $V_\infty={Vinf}$")
+    plt.legend(frameon=True, loc="best")
+    plt.grid(alpha=0.25)
+    plt.tight_layout()
+    plt.savefig("pde_v_profiles.pdf", dpi=300, bbox_inches="tight")
+    plt.show()
+
+    # Plot front position
+    plt.figure(figsize=(6, 4))
+    plt.plot(times, positions, "k-")
+    plt.xlabel(r"$t$")
+    plt.ylabel(r"$x_f(t)$")
+    #plt.title("Front position")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig("pde_front_position.pdf", dpi=300, bbox_inches="tight")
+    plt.show()
+
+    # Step 2. Calculate the wave speed for different gamma values and compare with the asymptotic prediction.
+    
+    gammas = [50, 100, 200, 500, 1000, 3000, 5000, 8000, 10000]
+    results = []
+
+    for gamma in gammas:
+        print(f"\nRunning gamma = {gamma}")
+        # Choose a sufficiently large domain for this gamma
+        L, T, nx, dt = domain_and_time_for_gamma(gamma)
+
+        # Estimate the travelling-wave speed
+        # Richardson-extrapolated travelling-wave speed
+        c_dt, c_dt_half, c_num = estimate_speed_richardson(gamma, Vinf, L, nx, T, dt,)
+        # Compute the fitted asymptotic coefficient
+        A_num = (2 - c_num) * np.log(gamma)**2
+
+        # Leading-order asymptotic predictions for the wave speed
+        c_th_pi2 = c_pi2(gamma)
+        c_th_pi2_4 = c_pi2_over_4(gamma)
+
+        # Absolute errors relative to the two asymptotic predictions
+        E_pi2 = abs(c_num - c_th_pi2)
+        E_pi2_4 = abs(c_num - c_th_pi2_4)
+
+        results.append((gamma, c_dt, c_dt_half, c_num, A_num, c_th_pi2, c_th_pi2_4, E_pi2, E_pi2_4))
+
+        print(f"c_num = {c_num:.6f}")
+        print(f"A_num = {A_num:.6f}")
+        print(f"pi^2  = {np.pi**2:.4f}")
+        print(f"pi^2/4 = {np.pi**2/4:.4f}")
+        print(f"E_pi2 = {E_pi2:.6e}")
+        print(f"E_pi2_4 = {E_pi2_4:.6e}")
+
+    # Save the results into a CSV file.
+    output_file = "pde_verification_results_richardson.csv"
+    with open(output_file, "w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["gamma", "c_dt", "c_dt_half", "c_richardson", "A_num", "c_pi2", "c_pi2_over_4", "E_pi2", "E_pi2_over_4",])
+        writer.writerows(results)
+    print(f"\nSaved: {output_file}")
+
+    # Convert the results to arrays for plotting.
+    results = np.asarray(results, dtype=float)
+    gamma_vals = results[:, 0]
+    c_dt_vals = results[:, 1]
+    c_dt_half_vals = results[:, 2]
+    c_vals = results[:, 3]
+    A_vals = results[:, 4]
+    c_vals_pi2 = results[:, 5]
+    c_vals_pi2_4 = results[:, 6]
+    errors_pi2 = results[:, 7]
+    errors_pi2_4 = results[:, 8]
+
+    # Plot numerical speed against both asymptotic predictions
+    plt.figure(figsize=(7, 4.5))
+    plt.plot(gamma_vals, c_vals, "o--", color=COLOR_NUM, lw=1.8, ms=6, label=r"$c_{\mathrm{num}}$")
+    plt.plot(gamma_vals, c_vals_pi2, "s--", color=COLOR_PI2, lw=1.8, ms=5.5, label=r"$2-\pi^2/(\ln\gamma)^2$",)
+    plt.plot(gamma_vals, c_vals_pi2_4, "d--", color=COLOR_PI24, lw=1.8, ms=5.5, label=r"$2-\pi^2/[4(\ln\gamma)^2]$",)
+    plt.axhline(2.0, color="k", lw=0.8, label=r"$c=2$")
+    plt.xscale("log")
+    plt.xlabel(r"$\gamma$")
+    plt.ylabel(r"$c$")
+    plt.legend(frameon=True)
+    plt.grid(alpha=0.25)
+    plt.tight_layout()
+    plt.savefig("pde_speed_comparison_Richardson.pdf", dpi=300, bbox_inches="tight")
+    plt.show()
+
+    # Plot fitted leading-order coefficient A_{num}
+    plt.figure(figsize=(7, 4.5))
+    plt.plot(1 / np.log(gamma_vals), A_vals, "o-", color=COLOR_NUM, lw=1.8, ms=6, label=r"$A_{\mathrm{num}}$")
+    plt.axhline(np.pi**2, color=COLOR_PI2, lw=1.8, ls="--", label=r"$\pi^2$")
+    plt.axhline(np.pi**2/4, color=COLOR_PI24, lw=1.8, ls="--", label=r"$\pi^2/4$")
+    plt.xlabel(r"$1/\ln\gamma$")
+    plt.ylabel(r"$A_{\mathrm{num}}$")
+    plt.legend(frameon=True)
+    plt.grid(alpha=0.25)
+    plt.tight_layout()
+    plt.savefig("pde_Anum_Richardson.pdf", dpi=300, bbox_inches="tight")
+    plt.show()
+
+    # Log-log error plot
+    eps_vals = 1 / gamma_vals
+    plt.figure(figsize=(7, 4.5))
+    plt.loglog(eps_vals, errors_pi2, "o--", color=COLOR_PI2, lw=1.8, ms=6, label=r"$E_{\pi^2}$",)
+    plt.loglog(eps_vals, errors_pi2_4, "s--", color=COLOR_PI24, lw=1.8, ms=5.5, label=r"$E_{\pi^2/4}$")
+    plt.xlabel(r"$\varepsilon=1/\gamma$")
+    plt.ylabel(r"absolute error")
+    #plt.title(r"Asymptotic speed error")
+    plt.legend()
+    plt.grid(True, which="both", alpha=0.25)
+    plt.tight_layout()
+    plt.savefig("absolute_error_plot_Richardson.pdf", dpi=300, bbox_inches="tight")
+    plt.show()
