@@ -95,6 +95,27 @@ def estimate_speed(times, positions, discard_fraction=0.7):
     # c, k0, k1
     return coeff[0], coeff[1], coeff[2]
 
+def estimate_speed_richardson(gamma, Vinf, L, nx, T, dt, discard_fraction=0.75):
+    '''
+    Estimate the travelling-wave speed using first-order Richardson
+    extrapolation in the timestep.
+    '''
+    record_every_dt = max(1, int(round(0.4 / dt)))
+    record_every_half = max(1, int(round(0.4 / (dt / 2))))
+
+    _, _, _, times1, positions1, _ = simulate(gamma=gamma, Vinf=Vinf, L=L, nx=nx, dt=dt, T=T, record_every=record_every_dt,)
+    _, _, _, times2, positions2, _ = simulate(gamma=gamma, Vinf=Vinf, L=L, nx=nx, dt=dt/2, T=T, record_every=record_every_half,)
+    c1, _, _ = estimate_speed(times1, positions1, discard_fraction=discard_fraction)
+    c2, _, _ = estimate_speed(times2, positions2, discard_fraction=discard_fraction)
+    cR = 2*c2 - c1
+
+    print(
+        f"c(dt) = {c1:.8f}, "
+        f"c(dt/2) = {c2:.8f}, "
+        f"c_R = {cR:.8f}"
+    )
+    return c1, c2, cR
+
 def c_pi2(gamma):
     '''
     Leading-order prediction obtained in the dissertation.
@@ -109,7 +130,7 @@ def c_pi2_over_4(gamma):
     return 2 - (np.pi**2 / 4) / np.log(gamma)**2
 
 
-def simulate(gamma=50.0, Vinf=0.3, L=400.0, nx=2001, dt=0.02, T=120.0, save_times=None,):
+def simulate(gamma=50.0, Vinf=0.3, L=400.0, nx=2001, dt=0.02, T=120.0, save_times=None, record_every=20):
     '''
     Solve the two-component invasion PDE using a Crank--Nicolson
     discretisation for the diffusion term and an explicit treatment
@@ -122,7 +143,7 @@ def simulate(gamma=50.0, Vinf=0.3, L=400.0, nx=2001, dt=0.02, T=120.0, save_time
     n = len(x)
 
     # Heaviside profiles
-    x0 = -0.4 * L
+    x0 = -L / 4
     u = np.where(x < x0, 1.0, 0.0)
     v = np.where(x < x0, 0.0, Vinf)
 
@@ -150,7 +171,7 @@ def simulate(gamma=50.0, Vinf=0.3, L=400.0, nx=2001, dt=0.02, T=120.0, save_time
             profiles[save_steps[step]] = (u.copy(), v.copy())
 
         # Record the front position every few time steps
-        if step % 20 == 0:
+        if step % record_every == 0:
             times.append(t)
             positions.append(front_position(x, u))
 
@@ -212,11 +233,9 @@ if __name__ == "__main__":
             print(f"\nRunning gamma = {gamma}")
             # Choose a sufficiently large domain for this gamma
             L, T, nx, dt = domain_and_time_for_gamma(gamma)
-            # Solve the PDE
-            x, u, v, times, positions, profiles = simulate(gamma=gamma, Vinf=Vinf, L=L, nx=nx, dt=dt, T=T,)
-
+            
             # Estimate the travelling-wave speed
-            c_num, k0, k1 = estimate_speed(times, positions, discard_fraction=0.75)
+            c_dt, c_dt_half, c_num = estimate_speed_richardson(gamma=gamma, Vinf=Vinf, L=L, nx=nx, T=T, dt=dt,)
             # Compute the fitted asymptotic coefficient
             A_num = (2 - c_num)*np.log(gamma)**2
 
